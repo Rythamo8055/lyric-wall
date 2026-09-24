@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - LYRIC WALL</title>
+  <style>
+    body {
+      background-color: #050608;
+      color: #DCDCDC;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      padding: 24px;
+      max-width: 780px;
+      margin: 0 auto;
+    }
+    h1, h2, h3 {
+      color: #FFFFFF;
+      font-weight: 700;
+    }
+    h1 {
+      border-bottom: 2px solid #222;
+      padding-bottom: 12px;
+      margin-top: 20px;
+      font-size: 2rem;
+    }
+    h2 {
+      margin-top: 32px;
+      font-size: 1.35rem;
+      color: #A0C0E8;
+    }
+    p, li {
+      color: #B5BAC1;
+      font-size: 0.98rem;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    li {
+      margin-bottom: 6px;
+    }
+    code {
+      background: #12151B;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.9em;
+      color: #79B8FF;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background: #111B27;
+      color: #58A6FF;
+      border-radius: 12px;
+      font-size: 0.82rem;
+      margin-bottom: 16px;
+    }
+    .footer {
+      margin-top: 48px;
+      padding-top: 16px;
+      border-top: 1px solid #1B1F27;
+      font-size: 0.85rem;
+      color: #768390;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="badge">LYRIC WALL Official Policy</div>
+  <h1>Privacy Policy for LYRIC WALL</h1>
+  <p><strong>Effective Date:</strong> September 24, 2026<br>
+  <strong>Last Updated:</strong> September 24, 2026</p>
+
+  <p>Welcome to <strong>LYRIC WALL</strong> ("we," "our," or "us"). We are committed to protecting your privacy and ensuring transparency regarding how our Android application handles data.</p>
+
+  <h2>1. Information We Access and How It Is Handled</h2>
+  <p>LYRIC WALL is designed as a standalone, privacy-first personalization utility. We do not collect, harvest, store, or sell any personally identifiable information (PII).</p>
+
+  <h3>A. Location Information (Approximate &amp; Precise)</h3>
+  <ul>
+    <li><strong>Permissions Requested:</strong> <code>android.permission.ACCESS_COARSE_LOCATION</code> and <code>android.permission.ACCESS_FINE_LOCATION</code></li>
+    <li><strong>Purpose:</strong> If granted, location coordinates are queried locally on your device to determine your current city, compute astronomical lunar terminators (moon phase angle), and retrieve real-time weather conditions (temperature, cloud cover, precipitation).</li>
+    <li><strong>Handling:</strong> Location data is processed ephemerally in-memory and sent strictly over secure HTTPS to open weather data providers. We do not log, retain, or share your location history. If you decline location access, the app continues to operate using fallback coordinates or manually selected cities.</li>
+  </ul>
+
+  <h3>B. Device &amp; Battery Information</h3>
+  <ul>
+    <li><strong>Purpose:</strong> The app registers a local system broadcast receiver (<code>Intent.ACTION_BATTERY_CHANGED</code>) solely to render the live battery gauge on your retro wallpaper HUD.</li>
+    <li><strong>Handling:</strong> Battery data is processed strictly in local device memory and is never recorded or exported off the device.</li>
+  </ul>
+
+  <h3>C. Screen Unlock &amp; Productivity Counter</h3>
+  <ul>
+    <li><strong>Purpose:</strong> The app counts screen unlock events locally to provide an optional daily unlock counter on your retro HUD.</li>
+    <li><strong>Handling:</strong> This counter is saved exclusively inside your device's private local app storage (<code>SharedPreferences</code>) and automatically resets at midnight. It never leaves your device.</li>
+  </ul>
+
+  <h2>2. Third-Party Services &amp; Telemetry</h2>
+  <p>To provide dynamic weather information, LYRIC WALL interacts with:</p>
+  <ul>
+    <li><strong>Open-Meteo API:</strong> Used to query ambient weather conditions using geographic coordinates. No personal identifiers, advertising IDs, or account tokens are sent.</li>
+  </ul>
+  <p>LYRIC WALL contains <strong>no third-party advertising SDKs</strong>, <strong>no analytics trackers</strong>, and <strong>no background location tracking</strong> when the app is inactive.</p>
+
+  <h2>3. Data Retention &amp; Security</h2>
+  <p>Because LYRIC WALL does not operate an external database or cloud server, zero personal data is retained remotely. All settings reside exclusively within local app sandbox storage on your device. Clearing app data or uninstalling the app permanently deletes all associated data immediately.</p>
+
+  <h2>4. Children’s Privacy</h2>
+  <p>LYRIC WALL does not target or knowingly collect information from children under the age of 13. The app is suitable for general audiences (PEGI 3 / Everyone).</p>
+
+  <h2>5. Contact Us</h2>
+  <p>If you have any questions or feedback regarding this Privacy Policy, please contact us at:</p>
+  <ul>
+    <li><strong>Application:</strong> LYRIC WALL</li>
+    <li><strong>Developer:</strong> Rythamo8055</li>
+    <li><strong>Repository:</strong> <a href="https://github.com/Rythamo8055/lyric-wall" style="color: #58A6FF;">github.com/Rythamo8055/lyric-wall</a></li>
+  </ul>
+
+  <div class="footer">
+    &copy; 2026 LYRIC WALL. All rights reserved.
+  </div>
+
+</body>
+</html>
