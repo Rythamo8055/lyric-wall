@@ -8,6 +8,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import com.example.luminawallpapers.util.DailyProductivityStats
+import com.example.luminawallpapers.util.LunarPhaseHelper
 import com.example.luminawallpapers.util.UsageStatsHelper
 import kotlin.math.cos
 import kotlin.math.sin
@@ -34,6 +35,9 @@ class CosmicWildernessRenderer(private val context: Context? = null) {
     var starSpeedScale = 1.0f
     var rippleSpeedScale = 1.0f
     var productivityMode = LY02ProductivityMode.FULL_TELEMETRY
+
+    // Real Astronomical Lunar Phase (-1f = automatic live phase from LunarPhaseHelper)
+    var lunarPhase: Float = -1f
 
     // Interactive States
     var isLanternLit = true
@@ -553,23 +557,8 @@ class CosmicWildernessRenderer(private val context: Context? = null) {
 
         canvas.restore()
 
-        // B. CRESCENT MOON (Mid Sky)
-        val moonX = 0.63f * refWidth
-        val moonY = 0.595f * refHeight
-        val moonR = 0.045f * refWidth
-
-        path.reset()
-        tempRect.set(moonX - moonR, moonY - moonR, moonX + moonR, moonY + moonR)
-        path.arcTo(tempRect, 270f, 180f, true)
-        val offX = moonR * 0.55f
-        val offY = moonR * -0.22f
-        val inR = moonR * 0.90f
-        tempRect.set(moonX - inR - offX, moonY - inR + offY, moonX + inR - offX, moonY + inR + offY)
-        path.arcTo(tempRect, 90f, -180f, false)
-        path.close()
-
-        glowPaint.color = Color.rgb(240, 245, 255)
-        canvas.drawPath(path, glowPaint)
+        // B. REAL ASTRONOMICAL LUNAR PHASE MOON (Mid Sky)
+        drawAstronomicalMoon(canvas)
 
         // C. CRATERED MOON / PLANET (Right Sky)
         val craterX = 0.685f * refWidth
@@ -591,6 +580,100 @@ class CosmicWildernessRenderer(private val context: Context? = null) {
             tempRect.set(cx - cr * 0.7f, cy - cr * 0.5f, cx + cr * 0.7f, cy + cr * 0.5f)
             canvas.drawArc(tempRect, 120f, 160f, false, faintStrokePaint)
         }
+    }
+
+    /**
+     * Renders the true astronomical lunar phase arc according to celestial mechanics:
+     * - The illuminated fraction k = (1 - cos(2*pi*phase)) / 2
+     * - The terminator is a semi-ellipse with horizontal semi-axis b = moonR * cos(2*pi*phase)
+     * - Respects Waxing (right limb) vs Waning (left limb), Crescent, Quarter, Gibbous, and Full Moon
+     */
+    private fun drawAstronomicalMoon(canvas: Canvas) {
+        val moonX = 0.63f * refWidth
+        val moonY = 0.595f * refHeight
+        val moonR = 0.045f * refWidth
+
+        // 1. Calculate Astronomical Phase
+        val rawPhase = if (lunarPhase >= 0f) (lunarPhase % 1.0f) else LunarPhaseHelper.getCurrentLunarPhase()
+        val phase = if (rawPhase < 0f) rawPhase + 1.0f else rawPhase
+        // Astronomical illuminated fraction k = (1 - cos(2 * PI * phase)) / 2
+        val k = (1.0 - kotlin.math.cos(phase * 2.0 * Math.PI)) / 2.0
+
+        canvas.save()
+        // Natural celestial tilt matching the line-art perspective (-22 degrees)
+        canvas.rotate(-22f, moonX, moonY)
+
+        // 2. Earthshine / Unlit Sphere Silhouette (Subtle cosmic line-art outline)
+        faintStrokePaint.alpha = 100
+        canvas.drawCircle(moonX, moonY, moonR, faintStrokePaint)
+        faintStrokePaint.alpha = 160 // restore
+
+        // 3. Render Illuminated Lunar Phase Arc according to celestial mechanics & Wikipedia
+        when {
+            // New Moon (Amavasya) - unilluminated sphere, faint subtle core
+            k < 0.02 -> {
+                glowPaint.color = Color.argb(35, 240, 245, 255)
+                canvas.drawCircle(moonX, moonY, moonR * 0.2f, glowPaint)
+            }
+            // Full Moon (Pournami / Purnima) - full circular illuminated disk
+            k > 0.98 -> {
+                glowPaint.color = Color.rgb(240, 245, 255)
+                canvas.drawCircle(moonX, moonY, moonR, glowPaint)
+                canvas.drawCircle(moonX, moonY, moonR, primaryStrokePaint)
+            }
+            // Crescent, Quarter, Gibbous - exact semi-ellipse terminator arc
+            else -> {
+                path.reset()
+                val isWaxing = phase < 0.5f
+
+                // Outer circular limb:
+                // Waxing illuminates the right limb (+180° sweep from top to bottom)
+                // Waning illuminates the left limb (-180° sweep from top to bottom)
+                tempRect.set(moonX - moonR, moonY - moonR, moonX + moonR, moonY + moonR)
+                if (isWaxing) {
+                    path.arcTo(tempRect, 270f, 180f, true)
+                } else {
+                    path.arcTo(tempRect, 270f, -180f, true)
+                }
+
+                // Inner terminator semi-ellipse (from bottom pole back to top pole):
+                // Terminator horizontal semi-axis b = moonR * cos(2 * PI * phase)
+                val cosVal = kotlin.math.cos(phase * 2.0 * Math.PI).toFloat()
+                val absRx = (moonR * kotlin.math.abs(cosVal)).coerceAtLeast(0.5f)
+                tempRect.set(moonX - absRx, moonY - moonR, moonX + absRx, moonY + moonR)
+
+                if (isWaxing) {
+                    if (cosVal > 0.02f) {
+                        // Waxing Crescent: terminator curves to the right (same side as limb)
+                        path.arcTo(tempRect, 90f, -180f, false)
+                    } else if (cosVal < -0.02f) {
+                        // Waxing Gibbous: terminator bulges to the left
+                        path.arcTo(tempRect, 90f, 180f, false)
+                    } else {
+                        // First Quarter: terminator is a straight vertical line
+                        path.lineTo(moonX, moonY - moonR)
+                    }
+                } else {
+                    if (cosVal < -0.02f) {
+                        // Waning Gibbous: terminator bulges to the right
+                        path.arcTo(tempRect, 90f, -180f, false)
+                    } else if (cosVal > 0.02f) {
+                        // Waning Crescent: terminator curves to the left (same side as limb)
+                        path.arcTo(tempRect, 90f, 180f, false)
+                    } else {
+                        // Third Quarter: terminator is a straight vertical line
+                        path.lineTo(moonX, moonY - moonR)
+                    }
+                }
+
+                path.close()
+                glowPaint.color = Color.rgb(240, 245, 255)
+                canvas.drawPath(path, glowPaint)
+                canvas.drawPath(path, primaryStrokePaint)
+            }
+        }
+
+        canvas.restore()
     }
 
     private fun drawMountainRange(canvas: Canvas) {

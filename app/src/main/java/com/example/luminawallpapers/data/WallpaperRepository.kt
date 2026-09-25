@@ -91,15 +91,28 @@ class WallpaperRepository(context: Context) {
             colorHex = 0xFF000000,
             views = 16420,
             downloads = 8910
+        ),
+        Wallpaper(
+            id = "w7",
+            title = "RY01: Radiant Dawn & Habit HUD",
+            author = "Lumina Engine",
+            category = "Productivity & 8-Bit",
+            thumbnailUrl = "local://ry01_dawn",
+            fullUrl = "local://ry01_dawn",
+            resolution = "8-Bit Procedural HD",
+            tags = listOf("8Bit", "Productivity", "WaterTracker", "Countdown", "UV", "Dawn", "DayNight", "Interactive", "Live"),
+            colorHex = 0xFFFEE8D0,
+            views = 19420,
+            downloads = 9810
         )
     )
 
     private val categories = listOf(
-        Category("cat_all", "All", "local://cat_all", 6, "All procedural code-driven wallpapers"),
-        Category("cat_prod", "Productivity & AMOLED", "local://cat_prod", 1, "True OLED #000000 with live screen-time & app HUD"),
+        Category("cat_all", "All", "local://cat_all", 7, "All procedural code-driven wallpapers"),
+        Category("cat_prod", "Productivity & Habits", "local://cat_prod", 2, "Live habit tracking, screen-time, & countdown telemetry"),
         Category("cat_amoled", "8-Bit AMOLED", "local://cat_amoled", 2, "True OLED #000000 battery-saving art"),
         Category("cat_seasons", "Indian Seasons", "local://cat_seasons", 4, "Vasanta, Varsha, Sharad, Shishira Ritus"),
-        Category("cat_pixel", "Lo-Fi Pixel", "local://cat_pixel", 2, "Retro pixel aesthetic & future creations")
+        Category("cat_pixel", "Lo-Fi Pixel", "local://cat_pixel", 3, "Retro pixel aesthetic & future creations")
     )
 
     private fun loadFavoriteIds(): Set<String> {

@@ -14,7 +14,8 @@ data class WeatherResult(
     val city: String,
     val tempC: String,
     val mode: WeatherMode,
-    val conditionDescription: String
+    val conditionDescription: String,
+    val moonPhase: Float? = null
 )
 
 object WeatherRepository {
@@ -42,7 +43,7 @@ object WeatherRepository {
 
     suspend fun fetchWeatherForCoordinates(lat: Double, lon: Double, fallbackCityName: String): Result<WeatherResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val weatherUrl = URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current_weather=true")
+            val weatherUrl = URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current_weather=true&daily=moon_phase,sunrise,sunset&timezone=auto")
             val weatherJsonStr = httpGet(weatherUrl)
             val weatherJson = JSONObject(weatherJsonStr)
             val current = weatherJson.getJSONObject("current_weather")
@@ -52,11 +53,20 @@ object WeatherRepository {
 
             val (mode, desc) = mapWmoCode(weatherCode)
 
+            val daily = weatherJson.optJSONObject("daily")
+            val moonPhases = daily?.optJSONArray("moon_phase")
+            val realMoonPhase = if (moonPhases != null && moonPhases.length() > 0) {
+                moonPhases.getDouble(0).toFloat()
+            } else {
+                null
+            }
+
             WeatherResult(
                 city = fallbackCityName,
                 tempC = "$temp°C",
                 mode = mode,
-                conditionDescription = desc
+                conditionDescription = desc,
+                moonPhase = realMoonPhase
             )
         }
     }

@@ -820,3 +820,35 @@
        - **Lock Screen Only (Static)**: Instantly applies the snapshot to the Lock screen without touching the Home screen.
        - **Both Home & Lock (Static)**: Applies the static snapshot to both screens simultaneously.
        - **Set as Live Wallpaper**: Launches the official Android system picker to enable live interactive physics, shooting stars on tap, dynamic weather, and live screen time meters.
+
+---
+
+## Entry 021 - Real Astronomical Lunar Phase Arc Mathematics & Dynamic Vector Rendering
+- **Date**: 2026-09-25
+- **Objective**: Implement exact celestial mechanics and real-time astronomical lunar phase terminator geometry for LY02 Cosmic Wilderness (and shared with LY01), replacing static approximations with true Wikipedia-derived lunar equations.
+- **Astronomical Geometry & Wikipedia Formulas**:
+  1. **Synodic Lunar Month & Phase Angle**:
+     - Synodic Month: $T_{syn} = 29.53058770576$ days ($2,551,442,778$ ms).
+     - Reference Epoch: Jan 11, 2024, 11:57 UTC ($T_{0} = 1704974220000$ ms).
+     - Phase Fraction: $\phi = \left(\frac{t - T_0}{T_{syn}}\right) \pmod 1 \in [0, 1.0)$.
+  2. **Illuminated Fraction ($k$)**:
+     $$k = \frac{1 + \cos(i)}{2} = \frac{1 - \cos(2\pi\phi)}{2}$$
+     - $\phi = 0.0$ (New Moon / Amavasya): $k = 0.0$ (0% lit).
+     - $\phi = 0.125$ (Waxing Crescent): $k \approx 0.146$ (14.6% lit arc).
+     - $\phi = 0.25$ (First Quarter): $k = 0.5$ (50% lit, straight line terminator).
+     - $\phi = 0.375$ (Waxing Gibbous): $k \approx 0.854$ (85.4% lit bulge).
+     - $\phi = 0.50$ (Full Moon / Pournami): $k = 1.0$ (100% full circular disk).
+     - $\phi = 0.625$ (Waning Gibbous): $k \approx 0.854$.
+     - $\phi = 0.75$ (Third Quarter): $k = 0.5$.
+     - $\phi = 0.875$ (Waning Crescent): $k \approx 0.146$.
+  3. **Terminator Semi-Ellipse Projection**:
+     - The Moon's circular limb is a semicircle of radius $R$.
+     - The terminator is the oblique projection of the lunar great circle onto the plane of the sky: a semi-ellipse sharing the Moon's poles with horizontal semi-axis:
+       $$b = R \cdot \cos(2\pi\phi)$$
+     - **Waxing ($\phi < 0.5$)**: Right limb is lit ($+180^\circ$ sweep). Inner arc sweeps $-180^\circ$ through angle $0^\circ$ for Crescent ($b > 0$), straight vertical chord for Quarter ($b = 0$), and $+180^\circ$ through $180^\circ$ for Gibbous ($b < 0$).
+     - **Waning ($\phi \ge 0.5$)**: Left limb is lit ($-180^\circ$ sweep). Inner arc sweeps $-180^\circ$ through angle $0^\circ$ for Gibbous, straight vertical chord for Quarter, and $+180^\circ$ through $180^\circ$ for Crescent.
+  4. **Vector Line-Art Integration**:
+     - Added `drawAstronomicalMoon(canvas)` to `CosmicWildernessRenderer`.
+     - Preserves Da Vinci earthshine / unlit lunar sphere silhouette (`faintStrokePaint`) with natural $-22^\circ$ celestial inclination matching vector line-art perspective.
+     - Dynamic `glowPaint` moonlight fill and `primaryStrokePaint` crisp contouring.
+     - Added real-time sync with `LiveWallpaperSettings.autoLunarPhase` and `lunarPhaseFraction` across `LuminaLiveWallpaperService`, `WallpaperHelper`, and `LiveWallpaperPreviewScreen`.

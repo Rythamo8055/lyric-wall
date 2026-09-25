@@ -131,6 +131,43 @@ class LiveWallpaperSettings(context: Context) {
         get() = prefs.getBoolean("ultra_battery_saver", false)
         set(value) = prefs.edit().putBoolean("ultra_battery_saver", value).apply()
 
+    // RY01 Radiant Dawn & Productivity settings
+    var ry01Theme: String
+        get() = prefs.getString("ry01_theme", "COZY_PEACH") ?: "COZY_PEACH"
+        set(value) = prefs.edit().putString("ry01_theme", value).apply()
+
+    var ry01WaterGlasses: Int
+        get() = prefs.getInt("ry01_water_glasses", 4)
+        set(value) = prefs.edit().putInt("ry01_water_glasses", value).apply()
+
+    var ry01WaterGoal: Int
+        get() = prefs.getInt("ry01_water_goal", 8)
+        set(value) = prefs.edit().putInt("ry01_water_goal", value).apply()
+
+    var ry01WaterDate: String
+        get() = prefs.getString("ry01_water_date", "") ?: ""
+        set(value) = prefs.edit().putString("ry01_water_date", value).apply()
+
+    var ry01CountdownLabel: String
+        get() = prefs.getString("ry01_countdown_label", "BIRTHDAY") ?: "BIRTHDAY"
+        set(value) = prefs.edit().putString("ry01_countdown_label", value).apply()
+
+    var ry01CountdownDays: Int
+        get() = prefs.getInt("ry01_countdown_days", 14)
+        set(value) = prefs.edit().putInt("ry01_countdown_days", value).apply()
+
+    var ry01TelemetryMode: Int // 0: UV Index, 1: AQI, 2: Rain %
+        get() = prefs.getInt("ry01_telemetry_mode", 0)
+        set(value) = prefs.edit().putInt("ry01_telemetry_mode", value).apply()
+
+    fun checkAndResetRy01Water() {
+        val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
+        if (ry01WaterDate != today) {
+            ry01WaterDate = today
+            ry01WaterGlasses = 0
+        }
+    }
+
     fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnSharedPreferenceChangeListener(listener)
     }

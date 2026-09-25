@@ -98,6 +98,8 @@ import androidx.compose.material.icons.rounded.Schedule
 import com.example.luminawallpapers.wallpaper.CelestialPixelRenderer
 import com.example.luminawallpapers.wallpaper.CosmicWildernessRenderer
 import com.example.luminawallpapers.wallpaper.LY02ProductivityMode
+import com.example.luminawallpapers.wallpaper.RY01Renderer
+import com.example.luminawallpapers.wallpaper.RY01Theme
 import com.example.luminawallpapers.wallpaper.WeatherMode
 import kotlinx.coroutines.launch
 
@@ -113,6 +115,13 @@ fun LiveWallpaperPreviewScreen(
     val settings = remember { LiveWallpaperSettings(context) }
 
     val isLy02 = WallpaperHelper.isLy02(wallpaperId)
+    val isRy01 = WallpaperHelper.isRy01(wallpaperId)
+
+    val ry01Renderer = remember {
+        RY01Renderer(context).apply {
+            loadFromSettings(context)
+        }
+    }
 
     val celestialRenderer = remember {
         CelestialPixelRenderer().apply {
@@ -161,6 +170,7 @@ fun LiveWallpaperPreviewScreen(
             showUnlocks = settings.showUnlocks
             showTopApps = settings.showTopApps
             starSpeedScale = settings.starSpeedScale
+            lunarPhase = if (settings.autoLunarPhase) -1f else settings.lunarPhaseFraction
         }
     }
 
@@ -197,6 +207,14 @@ fun LiveWallpaperPreviewScreen(
     var productivityModeState by remember { mutableStateOf(cosmicRenderer.productivityMode) }
     var isLanternLitState by remember { mutableStateOf(cosmicRenderer.isLanternLit) }
 
+    // RY01 Dynamic State
+    var ry01ThemeState by remember { mutableStateOf(ry01Renderer.currentTheme) }
+    var ry01WaterGlassesState by remember { mutableStateOf(settings.ry01WaterGlasses) }
+    var ry01WaterGoalState by remember { mutableStateOf(settings.ry01WaterGoal) }
+    var ry01CountdownLabelState by remember { mutableStateOf(settings.ry01CountdownLabel) }
+    var ry01CountdownDaysState by remember { mutableStateOf(settings.ry01CountdownDays) }
+    var ry01TelemetryModeState by remember { mutableStateOf(settings.ry01TelemetryMode) }
+
     fun performGpsWeatherSync() {
         isFetchingWeather = true
         scope.launch {
@@ -212,7 +230,19 @@ fun LiveWallpaperPreviewScreen(
                     celestialRenderer.cityName = weather.city
                     celestialRenderer.currentTemp = weather.tempC
                     celestialRenderer.weatherMode = weather.mode
+                    ry01Renderer.cityName = weather.city
+                    ry01Renderer.currentTemp = weather.tempC
+                    ry01Renderer.weatherMode = weather.mode
                     selectedWeather = weather.mode
+                    weather.moonPhase?.let { livePhase ->
+                        LunarPhaseHelper.cachedLivePhase = livePhase
+                        if (autoLunarPhaseState) {
+                            lunarPhaseSlider = livePhase
+                            celestialRenderer.lunarPhase = livePhase
+                            cosmicRenderer.lunarPhase = -1f
+                            settings.lunarPhaseFraction = livePhase
+                        }
+                    }
                     Toast.makeText(context, "Weather synced: ${weather.city} (${weather.tempC})", Toast.LENGTH_SHORT).show()
                 }.onFailure {
                     val cityRes = WeatherRepository.fetchWeatherForCity(settings.cityName)
@@ -223,7 +253,19 @@ fun LiveWallpaperPreviewScreen(
                         celestialRenderer.cityName = weather.city
                         celestialRenderer.currentTemp = weather.tempC
                         celestialRenderer.weatherMode = weather.mode
+                        ry01Renderer.cityName = weather.city
+                        ry01Renderer.currentTemp = weather.tempC
+                        ry01Renderer.weatherMode = weather.mode
                         selectedWeather = weather.mode
+                        weather.moonPhase?.let { livePhase ->
+                            LunarPhaseHelper.cachedLivePhase = livePhase
+                            if (autoLunarPhaseState) {
+                                lunarPhaseSlider = livePhase
+                                celestialRenderer.lunarPhase = livePhase
+                                cosmicRenderer.lunarPhase = -1f
+                                settings.lunarPhaseFraction = livePhase
+                            }
+                        }
                     }
                 }
             } else {
@@ -236,7 +278,19 @@ fun LiveWallpaperPreviewScreen(
                     celestialRenderer.cityName = weather.city
                     celestialRenderer.currentTemp = weather.tempC
                     celestialRenderer.weatherMode = weather.mode
+                    ry01Renderer.cityName = weather.city
+                    ry01Renderer.currentTemp = weather.tempC
+                    ry01Renderer.weatherMode = weather.mode
                     selectedWeather = weather.mode
+                    weather.moonPhase?.let { livePhase ->
+                        LunarPhaseHelper.cachedLivePhase = livePhase
+                        if (autoLunarPhaseState) {
+                            lunarPhaseSlider = livePhase
+                            celestialRenderer.lunarPhase = livePhase
+                            cosmicRenderer.lunarPhase = -1f
+                            settings.lunarPhaseFraction = livePhase
+                        }
+                    }
                     Toast.makeText(context, "Weather synced: ${weather.city} (${weather.tempC})", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -283,7 +337,7 @@ fun LiveWallpaperPreviewScreen(
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(isLy02) {
+                .pointerInput(isLy02, isRy01) {
                     detectTapGestures(
                         onTap = { offset ->
                             if (isLy02) {
@@ -293,6 +347,10 @@ fun LiveWallpaperPreviewScreen(
                                 if (feedback.isNotEmpty()) {
                                     Toast.makeText(context, feedback, Toast.LENGTH_SHORT).show()
                                 }
+                            } else if (isRy01) {
+                                val nx = offset.x / size.width.toFloat()
+                                val ny = offset.y / size.height.toFloat()
+                                ry01Renderer.onTouch(nx, ny, context)
                             } else {
                                 val nx = offset.x / size.width.toFloat()
                                 val ny = offset.y / size.height.toFloat()
@@ -313,6 +371,8 @@ fun LiveWallpaperPreviewScreen(
                     if (isLy02) {
                         cosmicRenderer.update(0.016f)
                         cosmicRenderer.draw(nativeCanvas, size.width.toInt(), size.height.toInt(), System.currentTimeMillis())
+                    } else if (isRy01) {
+                        ry01Renderer.render(nativeCanvas, size.width.toInt(), size.height.toInt())
                     } else {
                         celestialRenderer.render(nativeCanvas, size.width.toInt(), size.height.toInt())
                     }
@@ -397,6 +457,7 @@ fun LiveWallpaperPreviewScreen(
 
                 val screenTitle = when {
                     isLy02 -> "LY02: Cosmic Wilderness"
+                    isRy01 -> "RY01: Radiant Dawn & Habit HUD"
                     wallpaperId == "w2" || wallpaperId.contains("varsha") -> "LY01: Varsha Monsoon"
                     wallpaperId == "w3" || wallpaperId.contains("sharad") -> "LY01: Sharad Moonlight"
                     wallpaperId == "w4" || wallpaperId.contains("shishira") -> "LY01: Shishira Frost"
@@ -454,7 +515,11 @@ fun LiveWallpaperPreviewScreen(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = if (isLy02) "Tap HUD to switch mode • Tap Tent/Lake/Sky • Double tap to hide UI" else "Tap moon to cycle weather • Tap sky for shooting stars",
+                        text = when {
+                            isLy02 -> "Tap HUD to switch mode • Tap Tent/Lake/Sky • Double tap to hide UI"
+                            isRy01 -> "Tap Water to log +1 • Tap UV to cycle • Tap Sun for themes"
+                            else -> "Tap moon to cycle weather • Tap sky for shooting stars"
+                        },
                         style = MaterialTheme.typography.labelSmall.copy(
                             color = Color.White.copy(alpha = 0.8f),
                             fontWeight = FontWeight.Medium
@@ -547,6 +612,7 @@ fun LiveWallpaperPreviewScreen(
                                 onClick = {
                                     selectedWeather = mode
                                     celestialRenderer.weatherMode = mode
+                                    ry01Renderer.weatherMode = mode
                                     settings.weatherMode = mode
                                 },
                                 label = { Text(mode.label, fontSize = 12.sp) },
@@ -852,6 +918,256 @@ fun LiveWallpaperPreviewScreen(
                                 steps = 10
                             )
                         }
+
+                        // 5. Astronomical Lunar Phase Arc
+                        ElevatedCard(
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Real Astronomical Lunar Arc", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
+                                        Text("Paksham: ${LunarPhaseHelper.getPakshamDescription(if (autoLunarPhaseState) LunarPhaseHelper.getCurrentLunarPhase() else lunarPhaseSlider)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                    Switch(
+                                        checked = autoLunarPhaseState,
+                                        onCheckedChange = { enabled ->
+                                            autoLunarPhaseState = enabled
+                                            settings.autoLunarPhase = enabled
+                                            if (enabled) {
+                                                val livePhase = LunarPhaseHelper.getCurrentLunarPhase()
+                                                lunarPhaseSlider = livePhase
+                                                celestialRenderer.lunarPhase = livePhase
+                                                cosmicRenderer.lunarPhase = -1f
+                                                settings.lunarPhaseFraction = livePhase
+                                            } else {
+                                                celestialRenderer.lunarPhase = lunarPhaseSlider
+                                                cosmicRenderer.lunarPhase = lunarPhaseSlider
+                                            }
+                                        }
+                                    )
+                                }
+
+                                if (!autoLunarPhaseState) {
+                                    Slider(
+                                        value = lunarPhaseSlider,
+                                        onValueChange = { phase ->
+                                            lunarPhaseSlider = phase
+                                            celestialRenderer.lunarPhase = phase
+                                            cosmicRenderer.lunarPhase = phase
+                                            settings.lunarPhaseFraction = phase
+                                        },
+                                        valueRange = 0.0f..1.0f,
+                                        steps = 15
+                                    )
+                                }
+                            }
+                        }
+                    } else if (isRy01) {
+                        // ==========================================
+                        // RY01 RADIANT DAWN & HABIT HUD CONTROLS
+                        // ==========================================
+                        Text(
+                            text = "RY01 Customization & Habit Tuning",
+                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "8-Bit Cozy Morning Pastel Palette, Water Tracking & Milestones",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        // 1. Color Palette Selector
+                        ElevatedCard(
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "Color Palette & Dawn Ambience",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    RY01Theme.values().forEach { theme ->
+                                        FilterChip(
+                                            selected = ry01ThemeState == theme,
+                                            onClick = {
+                                                ry01ThemeState = theme
+                                                ry01Renderer.currentTheme = theme
+                                                settings.ry01Theme = theme.name
+                                            },
+                                            label = { Text(theme.label, fontSize = 12.sp) },
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Milestone Countdown Config
+                        ElevatedCard(
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "Milestone Countdown (Birthday / Exam)",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                                OutlinedTextField(
+                                    value = ry01CountdownLabelState,
+                                    onValueChange = {
+                                        ry01CountdownLabelState = it.take(12)
+                                        ry01Renderer.countdownLabel = ry01CountdownLabelState
+                                        settings.ry01CountdownLabel = ry01CountdownLabelState
+                                    },
+                                    label = { Text("Event Name") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Days Remaining", style = MaterialTheme.typography.bodyMedium)
+                                    Text("$ry01CountdownDaysState Days", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                }
+                                Slider(
+                                    value = ry01CountdownDaysState.toFloat(),
+                                    onValueChange = {
+                                        ry01CountdownDaysState = it.toInt()
+                                        ry01Renderer.countdownDays = ry01CountdownDaysState
+                                        settings.ry01CountdownDays = ry01CountdownDaysState
+                                    },
+                                    valueRange = 1f..60f,
+                                    steps = 59
+                                )
+                            }
+                        }
+
+                        // 3. Water Habit Tracker Config
+                        ElevatedCard(
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "8-Bit Water Habit Tracker",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Logged Today", style = MaterialTheme.typography.bodyMedium)
+                                    Text("$ry01WaterGlassesState / $ry01WaterGoalState Cups", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                }
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            ry01WaterGlassesState = if (ry01WaterGlassesState >= ry01WaterGoalState) 0 else ry01WaterGlassesState + 1
+                                            ry01Renderer.waterGlasses = ry01WaterGlassesState
+                                            settings.ry01WaterGlasses = ry01WaterGlassesState
+                                        }
+                                    ) {
+                                        Text("+1 Cup")
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            ry01WaterGlassesState = 0
+                                            ry01Renderer.waterGlasses = 0
+                                            settings.ry01WaterGlasses = 0
+                                        }
+                                    ) {
+                                        Text("Reset")
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Daily Goal", style = MaterialTheme.typography.bodyMedium)
+                                    Text("$ry01WaterGoalState Cups", fontWeight = FontWeight.Bold)
+                                }
+                                Slider(
+                                    value = ry01WaterGoalState.toFloat(),
+                                    onValueChange = {
+                                        ry01WaterGoalState = it.toInt()
+                                        ry01Renderer.waterGoal = ry01WaterGoalState
+                                        settings.ry01WaterGoal = ry01WaterGoalState
+                                    },
+                                    valueRange = 4f..16f,
+                                    steps = 11
+                                )
+                            }
+                        }
+
+                        // 4. Telemetry Metric Selector
+                        ElevatedCard(
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "Weather Telemetry Tag",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    val telemetryLabels = listOf("UV Index", "Air Quality (AQI)", "Rain %")
+                                    telemetryLabels.forEachIndexed { index, label ->
+                                        FilterChip(
+                                            selected = ry01TelemetryModeState == index,
+                                            onClick = {
+                                                ry01TelemetryModeState = index
+                                                ry01Renderer.telemetryMode = index
+                                                settings.ry01TelemetryMode = index
+                                            },
+                                            label = { Text(label, fontSize = 12.sp) },
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         // ==========================================
                         // LY01 CELESTIAL CONTROLS
@@ -912,7 +1228,11 @@ fun LiveWallpaperPreviewScreen(
                                                 val livePhase = LunarPhaseHelper.getCurrentLunarPhase()
                                                 lunarPhaseSlider = livePhase
                                                 celestialRenderer.lunarPhase = livePhase
+                                                cosmicRenderer.lunarPhase = -1f
                                                 settings.lunarPhaseFraction = livePhase
+                                            } else {
+                                                celestialRenderer.lunarPhase = lunarPhaseSlider
+                                                cosmicRenderer.lunarPhase = lunarPhaseSlider
                                             }
                                         }
                                     )
@@ -924,6 +1244,7 @@ fun LiveWallpaperPreviewScreen(
                                         onValueChange = { phase ->
                                             lunarPhaseSlider = phase
                                             celestialRenderer.lunarPhase = phase
+                                            cosmicRenderer.lunarPhase = phase
                                             settings.lunarPhaseFraction = phase
                                         },
                                         valueRange = 0.0f..1.0f,

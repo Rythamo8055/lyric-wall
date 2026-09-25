@@ -14,10 +14,12 @@ import android.view.SurfaceHolder
 import com.example.luminawallpapers.data.LiveWallpaperSettings
 import com.example.luminawallpapers.data.WeatherRepository
 import com.example.luminawallpapers.util.LocationHelper
+import com.example.luminawallpapers.util.LunarPhaseHelper
 import com.example.luminawallpapers.util.UsageStatsHelper
 import com.example.luminawallpapers.util.WallpaperHelper
 import com.example.luminawallpapers.wallpaper.CelestialPixelRenderer
 import com.example.luminawallpapers.wallpaper.CosmicWildernessRenderer
+import com.example.luminawallpapers.wallpaper.RY01Renderer
 import com.example.luminawallpapers.wallpaper.WeatherMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +37,7 @@ class LuminaLiveWallpaperService : WallpaperService() {
 
         private val celestialRenderer = CelestialPixelRenderer()
         private val cosmicRenderer = CosmicWildernessRenderer(this@LuminaLiveWallpaperService)
+        private val ry01Renderer = RY01Renderer(this@LuminaLiveWallpaperService)
         private val choreographer = Choreographer.getInstance()
         private lateinit var settings: LiveWallpaperSettings
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -52,6 +55,7 @@ class LuminaLiveWallpaperService : WallpaperService() {
                         context?.let {
                             UsageStatsHelper.incrementUnlockCount(it)
                             cosmicRenderer.refreshProductivityStats()
+                            ry01Renderer.unlockCount = UsageStatsHelper.getDailyUnlockCount(it)
                             applySettingsToRenderer()
                             drawFrame()
                         }
@@ -73,6 +77,8 @@ class LuminaLiveWallpaperService : WallpaperService() {
                         Intent.ACTION_TIME_CHANGED,
                         Intent.ACTION_TIME_TICK -> {
                             val resetOccurred = UsageStatsHelper.checkAndResetDailyStatsAtMidnight(ctx)
+                            settings.checkAndResetRy01Water()
+                            ry01Renderer.loadFromSettings(ctx)
                             if (resetOccurred || intent.action != Intent.ACTION_TIME_TICK) {
                                 cosmicRenderer.refreshProductivityStats()
                                 drawFrame()
@@ -89,7 +95,9 @@ class LuminaLiveWallpaperService : WallpaperService() {
                     val level = it.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
                     val scale = it.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
                     if (level >= 0 && scale > 0) {
-                        celestialRenderer.batteryPercent = (level * 100) / scale
+                        val pct = (level * 100) / scale
+                        celestialRenderer.batteryPercent = pct
+                        ry01Renderer.batteryPercent = pct
                     }
                     val status = it.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
                     celestialRenderer.isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
@@ -208,7 +216,11 @@ class LuminaLiveWallpaperService : WallpaperService() {
                 cosmicRenderer.showUnlocks = settings.showUnlocks
                 cosmicRenderer.showTopApps = settings.showTopApps
                 cosmicRenderer.starSpeedScale = settings.starSpeedScale
+                cosmicRenderer.lunarPhase = if (settings.autoLunarPhase) -1f else settings.lunarPhaseFraction
                 cosmicRenderer.refreshProductivityStats()
+            } else if (WallpaperHelper.isRy01(activeId)) {
+                // Configure RY01 Radiant Dawn & Habit HUD
+                ry01Renderer.loadFromSettings(this@LuminaLiveWallpaperService)
             } else {
                 // Configure LY01 variants & seasons
                 val lower = activeId.lowercase()
@@ -264,6 +276,12 @@ class LuminaLiveWallpaperService : WallpaperService() {
                                 settings.cityName = weather.city
                                 settings.currentTemp = weather.tempC
                                 settings.weatherMode = weather.mode
+                                weather.moonPhase?.let { livePhase ->
+                                    LunarPhaseHelper.cachedLivePhase = livePhase
+                                    if (settings.autoLunarPhase) {
+                                        settings.lunarPhaseFraction = livePhase
+                                    }
+                                }
                                 applySettingsToRenderer()
                                 drawFrame()
                                 return@launch
@@ -277,6 +295,12 @@ class LuminaLiveWallpaperService : WallpaperService() {
                         settings.cityName = weather.city
                         settings.currentTemp = weather.tempC
                         settings.weatherMode = weather.mode
+                        weather.moonPhase?.let { livePhase ->
+                            LunarPhaseHelper.cachedLivePhase = livePhase
+                            if (settings.autoLunarPhase) {
+                                settings.lunarPhaseFraction = livePhase
+                            }
+                        }
                         applySettingsToRenderer()
                         drawFrame()
                     }
@@ -352,6 +376,10 @@ class LuminaLiveWallpaperService : WallpaperService() {
                     val effectiveId = getEffectiveWallpaperId()
                     if (WallpaperHelper.isLy02(effectiveId)) {
                         cosmicRenderer.onTouch(it.x, it.y, width, height)
+                    } else if (WallpaperHelper.isRy01(effectiveId)) {
+                        val nx = it.x / width.toFloat()
+                        val ny = it.y / height.toFloat()
+                        ry01Renderer.onTouch(nx, ny, this@LuminaLiveWallpaperService)
                     } else {
                         val nx = it.x / width.toFloat()
                         val ny = it.y / height.toFloat()
@@ -380,6 +408,8 @@ class LuminaLiveWallpaperService : WallpaperService() {
                 if (WallpaperHelper.isLy02(effectiveId)) {
                     cosmicRenderer.update(0.033f)
                     cosmicRenderer.draw(canvas, width, height, System.currentTimeMillis())
+                } else if (WallpaperHelper.isRy01(effectiveId)) {
+                    ry01Renderer.render(canvas, width, height)
                 } else {
                     celestialRenderer.render(canvas, width, height)
                 }

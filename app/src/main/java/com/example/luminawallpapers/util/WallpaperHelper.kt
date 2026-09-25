@@ -13,6 +13,7 @@ import coil.request.SuccessResult
 import com.example.luminawallpapers.data.LiveWallpaperSettings
 import com.example.luminawallpapers.wallpaper.CelestialPixelRenderer
 import com.example.luminawallpapers.wallpaper.CosmicWildernessRenderer
+import com.example.luminawallpapers.wallpaper.RY01Renderer
 import com.example.luminawallpapers.wallpaper.WeatherMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -30,10 +31,16 @@ object WallpaperHelper {
         return lower == "w6" || lower.contains("ly02") || lower.contains("cosmic")
     }
 
+    fun isRy01(wallpaperId: String): Boolean {
+        val lower = wallpaperId.lowercase()
+        return lower == "w7" || lower.contains("ry01") || lower.contains("dawn")
+    }
+
     fun resolveUri(wallpaperId: String): String {
         val lower = wallpaperId.lowercase()
         return when {
             isLy02(wallpaperId) -> "local://ly02_cosmic"
+            isRy01(wallpaperId) -> "local://ry01_dawn"
             lower.contains("varsha") || lower == "w2" -> "local://ly01_varsha"
             lower.contains("sharad") || lower == "w3" -> "local://ly01_sharad"
             lower.contains("shishira") || lower == "w4" -> "local://ly01_shishira"
@@ -51,6 +58,7 @@ object WallpaperHelper {
         val settings = LiveWallpaperSettings(context)
         val resolvedId = when {
             isLy02(wallpaperId) -> "ly02_cosmic"
+            isRy01(wallpaperId) -> "ry01_dawn"
             wallpaperId.contains("varsha") || wallpaperId == "w2" -> "ly01_varsha"
             wallpaperId.contains("sharad") || wallpaperId == "w3" -> "ly01_sharad"
             wallpaperId.contains("shishira") || wallpaperId == "w4" -> "ly01_shishira"
@@ -153,9 +161,13 @@ object WallpaperHelper {
             cosmic.showScreenTime = settings.showScreenTime
             cosmic.showUnlocks = settings.showUnlocks
             cosmic.showTopApps = settings.showTopApps
+            cosmic.lunarPhase = if (settings.autoLunarPhase) -1f else settings.lunarPhaseFraction
             cosmic.refreshProductivityStats()
             cosmic.update(0.1f)
             cosmic.draw(canvas, width, height, System.currentTimeMillis())
+        } else if (isRy01(uri)) {
+            val ry01 = RY01Renderer(context)
+            ry01.render(canvas, width, height)
         } else {
             val celestial = CelestialPixelRenderer()
             celestial.moonScale = settings.moonSizeScale
