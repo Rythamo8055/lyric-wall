@@ -104,15 +104,28 @@ class WallpaperRepository(context: Context) {
             colorHex = 0xFFFEE8D0,
             views = 19420,
             downloads = 9810
+        ),
+        Wallpaper(
+            id = "w8",
+            title = "OS01: Retro Desk Companion",
+            author = "Lumina Engine",
+            category = "Productivity & Cycle Tracker",
+            thumbnailUrl = "local://os01_companion",
+            fullUrl = "local://os01_companion",
+            resolution = "Pixel Canvas HD",
+            tags = listOf("Retro", "PixelArt", "CycleTracker", "StepCounter", "Habits", "Cozy", "Pastel", "Interactive", "Live"),
+            colorHex = 0xFFFCEEE4,
+            views = 21540,
+            downloads = 11200
         )
     )
 
     private val categories = listOf(
-        Category("cat_all", "All", "local://cat_all", 7, "All procedural code-driven wallpapers"),
-        Category("cat_prod", "Productivity & Habits", "local://cat_prod", 2, "Live habit tracking, screen-time, & countdown telemetry"),
+        Category("cat_all", "All", "local://cat_all", 8, "All procedural code-driven wallpapers"),
+        Category("cat_prod", "Productivity & Cycle", "local://cat_prod", 3, "Live cycle tracker, steps, habits & countdown"),
         Category("cat_amoled", "8-Bit AMOLED", "local://cat_amoled", 2, "True OLED #000000 battery-saving art"),
         Category("cat_seasons", "Indian Seasons", "local://cat_seasons", 4, "Vasanta, Varsha, Sharad, Shishira Ritus"),
-        Category("cat_pixel", "Lo-Fi Pixel", "local://cat_pixel", 3, "Retro pixel aesthetic & future creations")
+        Category("cat_pixel", "Lo-Fi Pixel", "local://cat_pixel", 4, "Retro pixel aesthetic & cozy companion")
     )
 
     private fun loadFavoriteIds(): Set<String> {

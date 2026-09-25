@@ -14,6 +14,7 @@ import com.example.luminawallpapers.data.LiveWallpaperSettings
 import com.example.luminawallpapers.wallpaper.CelestialPixelRenderer
 import com.example.luminawallpapers.wallpaper.CosmicWildernessRenderer
 import com.example.luminawallpapers.wallpaper.RY01Renderer
+import com.example.luminawallpapers.wallpaper.RetroDeskCompanionRenderer
 import com.example.luminawallpapers.wallpaper.WeatherMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -36,11 +37,17 @@ object WallpaperHelper {
         return lower == "w7" || lower.contains("ry01") || lower.contains("dawn")
     }
 
+    fun isOs01(wallpaperId: String): Boolean {
+        val lower = wallpaperId.lowercase()
+        return lower == "w8" || lower.contains("os01") || lower.contains("companion")
+    }
+
     fun resolveUri(wallpaperId: String): String {
         val lower = wallpaperId.lowercase()
         return when {
             isLy02(wallpaperId) -> "local://ly02_cosmic"
             isRy01(wallpaperId) -> "local://ry01_dawn"
+            isOs01(wallpaperId) -> "local://os01_companion"
             lower.contains("varsha") || lower == "w2" -> "local://ly01_varsha"
             lower.contains("sharad") || lower == "w3" -> "local://ly01_sharad"
             lower.contains("shishira") || lower == "w4" -> "local://ly01_shishira"
@@ -59,6 +66,7 @@ object WallpaperHelper {
         val resolvedId = when {
             isLy02(wallpaperId) -> "ly02_cosmic"
             isRy01(wallpaperId) -> "ry01_dawn"
+            isOs01(wallpaperId) -> "os01_companion"
             wallpaperId.contains("varsha") || wallpaperId == "w2" -> "ly01_varsha"
             wallpaperId.contains("sharad") || wallpaperId == "w3" -> "ly01_sharad"
             wallpaperId.contains("shishira") || wallpaperId == "w4" -> "ly01_shishira"
@@ -168,6 +176,9 @@ object WallpaperHelper {
         } else if (isRy01(uri)) {
             val ry01 = RY01Renderer(context)
             ry01.render(canvas, width, height)
+        } else if (isOs01(uri)) {
+            val os01 = RetroDeskCompanionRenderer(context)
+            os01.render(canvas, width, height)
         } else {
             val celestial = CelestialPixelRenderer()
             celestial.moonScale = settings.moonSizeScale

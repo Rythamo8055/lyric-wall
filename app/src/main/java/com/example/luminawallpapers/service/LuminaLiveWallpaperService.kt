@@ -20,6 +20,7 @@ import com.example.luminawallpapers.util.WallpaperHelper
 import com.example.luminawallpapers.wallpaper.CelestialPixelRenderer
 import com.example.luminawallpapers.wallpaper.CosmicWildernessRenderer
 import com.example.luminawallpapers.wallpaper.RY01Renderer
+import com.example.luminawallpapers.wallpaper.RetroDeskCompanionRenderer
 import com.example.luminawallpapers.wallpaper.WeatherMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,7 @@ class LuminaLiveWallpaperService : WallpaperService() {
         private val celestialRenderer = CelestialPixelRenderer()
         private val cosmicRenderer = CosmicWildernessRenderer(this@LuminaLiveWallpaperService)
         private val ry01Renderer = RY01Renderer(this@LuminaLiveWallpaperService)
+        private val os01Renderer = RetroDeskCompanionRenderer(this@LuminaLiveWallpaperService)
         private val choreographer = Choreographer.getInstance()
         private lateinit var settings: LiveWallpaperSettings
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -79,6 +81,7 @@ class LuminaLiveWallpaperService : WallpaperService() {
                             val resetOccurred = UsageStatsHelper.checkAndResetDailyStatsAtMidnight(ctx)
                             settings.checkAndResetRy01Water()
                             ry01Renderer.loadFromSettings(ctx)
+                            os01Renderer.loadFromSettings()
                             if (resetOccurred || intent.action != Intent.ACTION_TIME_TICK) {
                                 cosmicRenderer.refreshProductivityStats()
                                 drawFrame()
@@ -184,6 +187,7 @@ class LuminaLiveWallpaperService : WallpaperService() {
             super.onDestroy()
             stopAnimation()
             settings.unregisterListener(this)
+            os01Renderer.cleanup()
             scope.cancel()
             try {
                 unregisterReceiver(batteryReceiver)
@@ -221,6 +225,9 @@ class LuminaLiveWallpaperService : WallpaperService() {
             } else if (WallpaperHelper.isRy01(activeId)) {
                 // Configure RY01 Radiant Dawn & Habit HUD
                 ry01Renderer.loadFromSettings(this@LuminaLiveWallpaperService)
+            } else if (WallpaperHelper.isOs01(activeId)) {
+                // Configure OS01 Retro Desk Companion
+                os01Renderer.loadFromSettings()
             } else {
                 // Configure LY01 variants & seasons
                 val lower = activeId.lowercase()
@@ -380,6 +387,10 @@ class LuminaLiveWallpaperService : WallpaperService() {
                         val nx = it.x / width.toFloat()
                         val ny = it.y / height.toFloat()
                         ry01Renderer.onTouch(nx, ny, this@LuminaLiveWallpaperService)
+                    } else if (WallpaperHelper.isOs01(effectiveId)) {
+                        val nx = it.x / width.toFloat()
+                        val ny = it.y / height.toFloat()
+                        os01Renderer.onTouch(nx, ny)
                     } else {
                         val nx = it.x / width.toFloat()
                         val ny = it.y / height.toFloat()
@@ -410,6 +421,8 @@ class LuminaLiveWallpaperService : WallpaperService() {
                     cosmicRenderer.draw(canvas, width, height, System.currentTimeMillis())
                 } else if (WallpaperHelper.isRy01(effectiveId)) {
                     ry01Renderer.render(canvas, width, height)
+                } else if (WallpaperHelper.isOs01(effectiveId)) {
+                    os01Renderer.render(canvas, width, height)
                 } else {
                     celestialRenderer.render(canvas, width, height)
                 }

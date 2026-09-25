@@ -168,6 +168,95 @@ class LiveWallpaperSettings(context: Context) {
         }
     }
 
+    // OS01 Retro Desk Companion & Cycle Tracker settings
+    var os01Theme: String
+        get() = prefs.getString("os01_theme", "PEACH") ?: "PEACH"
+        set(value) = prefs.edit().putString("os01_theme", value).apply()
+
+    var os01LastPeriodTimestamp: Long
+        get() {
+            val def = System.currentTimeMillis() - (13L * 24L * 60L * 60L * 1000L) // Default: Day 14
+            return prefs.getLong("os01_last_period_epoch", def)
+        }
+        set(value) = prefs.edit().putLong("os01_last_period_epoch", value).apply()
+
+    var os01CycleLength: Int
+        get() = prefs.getInt("os01_cycle_length", 28)
+        set(value) = prefs.edit().putInt("os01_cycle_length", value).apply()
+
+    var os01PeriodDuration: Int
+        get() = prefs.getInt("os01_period_duration", 5)
+        set(value) = prefs.edit().putInt("os01_period_duration", value).apply()
+
+    fun getCalculatedCycleDay(): Int {
+        val todayCal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val startCal = java.util.Calendar.getInstance().apply {
+            timeInMillis = os01LastPeriodTimestamp
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val diffMillis = todayCal.timeInMillis - startCal.timeInMillis
+        val diffDays = (diffMillis / (1000L * 60 * 60 * 24)).toInt()
+        val cycleLen = os01CycleLength.coerceIn(21, 35)
+        if (diffDays < 0) return 1
+        return (diffDays % cycleLen) + 1
+    }
+
+    var os01StepGoal: Int
+        get() = prefs.getInt("os01_step_goal", 10000)
+        set(value) = prefs.edit().putInt("os01_step_goal", value).apply()
+
+    var os01TodaySteps: Int
+        get() = prefs.getInt("os01_today_steps", 0)
+        set(value) = prefs.edit().putInt("os01_today_steps", value).apply()
+
+    var os01SensorBaseline: Int
+        get() = prefs.getInt("os01_sensor_baseline", -1)
+        set(value) = prefs.edit().putInt("os01_sensor_baseline", value).apply()
+
+    var os01StepDate: String
+        get() = prefs.getString("os01_step_date", "") ?: ""
+        set(value) = prefs.edit().putString("os01_step_date", value).apply()
+
+    var os01WaterGlasses: Int
+        get() = prefs.getInt("os01_water_glasses", 6)
+        set(value) = prefs.edit().putInt("os01_water_glasses", value).apply()
+
+    var os01Habit1: Boolean
+        get() = prefs.getBoolean("os01_habit_1", true)
+        set(value) = prefs.edit().putBoolean("os01_habit_1", value).apply()
+
+    var os01Habit2: Boolean
+        get() = prefs.getBoolean("os01_habit_2", true)
+        set(value) = prefs.edit().putBoolean("os01_habit_2", value).apply()
+
+    var os01Habit3: Boolean
+        get() = prefs.getBoolean("os01_habit_3", false)
+        set(value) = prefs.edit().putBoolean("os01_habit_3", value).apply()
+
+    var os01CustomDialogue: String
+        get() = prefs.getString("os01_custom_dialogue", "YOU GOT THIS! ♡") ?: "YOU GOT THIS! ♡"
+        set(value) = prefs.edit().putString("os01_custom_dialogue", value).apply()
+
+    var os01Habit1Title: String
+        get() = prefs.getString("os01_habit_1_title", "VITAMINS") ?: "VITAMINS"
+        set(value) = prefs.edit().putString("os01_habit_1_title", value).apply()
+
+    var os01Habit2Title: String
+        get() = prefs.getString("os01_habit_2_title", "WATER") ?: "WATER"
+        set(value) = prefs.edit().putString("os01_habit_2_title", value).apply()
+
+    var os01Habit3Title: String
+        get() = prefs.getString("os01_habit_3_title", "10K STEPS") ?: "10K STEPS"
+        set(value) = prefs.edit().putString("os01_habit_3_title", value).apply()
+
     fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnSharedPreferenceChangeListener(listener)
     }

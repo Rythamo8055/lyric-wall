@@ -12,6 +12,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import com.example.luminawallpapers.data.LiveWallpaperSettings
+import com.example.luminawallpapers.util.LunarPhaseHelper
 import com.example.luminawallpapers.util.UsageStatsHelper
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -34,7 +35,7 @@ class RY01Renderer(private val context: Context? = null) {
     val gridWidth = 180
     val gridHeight = 390
 
-    var currentTheme = RY01Theme.COZY_PEACH
+    var currentTheme = RY01Theme.DYNAMIC_TIME
     var weatherMode = WeatherMode.CLEAR_NIGHT
     var currentTemp = "22°C"
     var cityName = "Hyderabad"
@@ -49,7 +50,14 @@ class RY01Renderer(private val context: Context? = null) {
     var waterGlasses = 4
     var waterGoal = 8
 
-    // Sun settings (Stationary locked at 124, 86)
+    // Astronomical Lunar Phase (0.0 to 1.0, synced with real astronomical ephemeris)
+    var lunarPhase = LunarPhaseHelper.getCurrentLunarPhase()
+
+    // Day/Night Engine & Smooth Cross-Fading (0.0 = Pure Day, 0.5 = Sunset/Dusk, 1.0 = Pure Starry Night)
+    var currentNightFactor = 0f
+    var previewStep = 0 // 0: Auto (real-time clock), 1: Day, 2: Sunset, 3: Night
+
+    // Celestial body settings (STATIONARY locked at 124, 86 for 0% drift between Sun and Moon)
     val sunCenterX = 124
     val sunCenterY = 86
     val sunRadius = 28
@@ -86,11 +94,15 @@ class RY01Renderer(private val context: Context? = null) {
     )
     private val clouds = mutableListOf<Cloud>()
 
-    // Sparkles & Swallows
+    // Daytime Sparkles
     data class Sparkle(val x: Int, val y: Int, var phase: Float, val speed: Float)
     private val sparkles = mutableListOf<Sparkle>()
 
-    // Birds / Swallows
+    // Nighttime 65-Star Dynamic Retro Starfield
+    data class RetroStar(val x: Int, val y: Int, val phase: Float, val speed: Float, val isCross: Boolean)
+    private val stars = mutableListOf<RetroStar>()
+
+    // Birds / Swallows (Daytime)
     data class Bird(val startX: Float, val startY: Float, var flapPhase: Float)
     private val birds = listOf(
         Bird(42f, 55f, 0.0f),
@@ -99,6 +111,10 @@ class RY01Renderer(private val context: Context? = null) {
         Bird(82f, 115f, 1.5f),
         Bird(89f, 120f, 2.0f)
     )
+
+    // Fireflies (Nighttime)
+    data class Firefly(var x: Float, var y: Float, val vx: Float, val vy: Float, var phase: Float, val pulseSpeed: Float)
+    private val fireflies = mutableListOf<Firefly>()
 
     // Weather Rain / Snow Particles & Splashes
     data class WeatherDrop(var x: Float, var y: Float, var speedY: Float, var speedX: Float)
@@ -120,7 +136,7 @@ class RY01Renderer(private val context: Context? = null) {
         clouds.add(Cloud(-10f, 320f, 0.9f, 2))
         clouds.add(Cloud(40f, 350f, 0.7f, 2))
 
-        // Sparkles
+        // Daytime Sparkles
         val sparkleCoords = listOf(
             Pair(32, 38), Pair(68, 190), Pair(155, 40), Pair(14, 138),
             Pair(160, 185), Pair(22, 242), Pair(18, 340), Pair(110, 48),
@@ -129,6 +145,29 @@ class RY01Renderer(private val context: Context? = null) {
         val rng = Random(42)
         for ((sx, sy) in sparkleCoords) {
             sparkles.add(Sparkle(sx, sy, rng.nextFloat() * 6.28f, 1.2f + rng.nextFloat() * 1.5f))
+        }
+
+        // Nighttime Starfield (65 procedural stars across the upper sky)
+        val starRng = Random(1337)
+        for (i in 0 until 65) {
+            val sx = starRng.nextInt(3, gridWidth - 3)
+            val sy = starRng.nextInt(4, 175)
+            val dSunSq = (sx - sunCenterX) * (sx - sunCenterX) + (sy - sunCenterY) * (sy - sunCenterY)
+            if (dSunSq > (sunRadius + 4) * (sunRadius + 4)) {
+                stars.add(RetroStar(sx, sy, starRng.nextFloat() * 6.28f, 0.8f + starRng.nextFloat() * 1.6f, starRng.nextFloat() < 0.22f))
+            }
+        }
+
+        // Nighttime Fireflies
+        for (i in 0 until 16) {
+            fireflies.add(Firefly(
+                x = starRng.nextFloat() * (gridWidth - 20) + 10f,
+                y = starRng.nextFloat() * 180f + 165f,
+                vx = (starRng.nextFloat() - 0.5f) * 7f,
+                vy = (starRng.nextFloat() - 0.5f) * 5f,
+                phase = starRng.nextFloat() * 6.28f,
+                pulseSpeed = 1.2f + starRng.nextFloat() * 1.8f
+            ))
         }
 
         // Weather drops with diagonal speed
@@ -144,7 +183,7 @@ class RY01Renderer(private val context: Context? = null) {
         currentTheme = try {
             RY01Theme.valueOf(settings.ry01Theme)
         } catch (e: Exception) {
-            RY01Theme.COZY_PEACH
+            RY01Theme.DYNAMIC_TIME
         }
         waterGlasses = settings.ry01WaterGlasses
         waterGoal = settings.ry01WaterGoal
@@ -154,6 +193,13 @@ class RY01Renderer(private val context: Context? = null) {
         cityName = settings.cityName
         currentTemp = settings.currentTemp
         weatherMode = settings.weatherMode
+
+        // Real Astronomical Lunar Phase sync
+        lunarPhase = if (settings.autoLunarPhase) {
+            LunarPhaseHelper.getCurrentLunarPhase()
+        } else {
+            settings.lunarPhaseFraction
+        }
 
         // Screen unlocks
         unlockCount = UsageStatsHelper.getDailyUnlockCount(ctx)
@@ -193,7 +239,17 @@ class RY01Renderer(private val context: Context? = null) {
             return true
         }
 
-        // 3. Water Habit Tracker (x: 10..115, y: 202..218)
+        // 3. Big Clock (x: 10..125, y: 164..188) -> Cycle Color Theme
+        if (gx in 10..125 && gy in 164..188) {
+            val themes = RY01Theme.values()
+            val nextIdx = (currentTheme.ordinal + 1) % themes.size
+            currentTheme = themes[nextIdx]
+            vibrateTick(ctx)
+            ctx?.let { persistSettings(it) }
+            return true
+        }
+
+        // 4. Water Habit Tracker (x: 10..115, y: 202..218)
         if (gx in 10..115 && gy in 202..218) {
             waterGlasses = if (waterGlasses >= waterGoal) 0 else waterGlasses + 1
             vibrateTick(ctx)
@@ -201,16 +257,13 @@ class RY01Renderer(private val context: Context? = null) {
             return true
         }
 
-        // 4. Sun Touch Zone (dx*dx + dy*dy <= 34*34)
+        // 5. Stationary Celestial Body Touch Zone (dx*dx + dy*dy <= 34*34)
+        // Single tap cycles Day/Sunset/Night preview and Dynamic Auto!
         val sDx = gx - sunCenterX
         val sDy = gy - sunCenterY
         if (sDx * sDx + sDy * sDy <= 34 * 34) {
-            // Cycle color theme on sun tap
-            val themes = RY01Theme.values()
-            val nextIdx = (currentTheme.ordinal + 1) % themes.size
-            currentTheme = themes[nextIdx]
+            previewStep = (previewStep + 1) % 4
             vibrateTick(ctx)
-            ctx?.let { persistSettings(it) }
             return true
         }
 
@@ -240,8 +293,39 @@ class RY01Renderer(private val context: Context? = null) {
     // Update & Logic
     // -------------------------------------------------------------
 
+    private fun getTargetNightFactor(): Float {
+        return when (previewStep) {
+            1 -> 0.0f  // Forced Daytime
+            2 -> 0.5f  // Forced Sunset / Dusk
+            3 -> 1.0f  // Forced Deep Starry Night
+            else -> {
+                // Dynamic time calculation based on real system clock
+                val cal = Calendar.getInstance()
+                val hour = cal.get(Calendar.HOUR_OF_DAY)
+                val minute = cal.get(Calendar.MINUTE)
+                val timeMinutes = hour * 60 + minute
+
+                when {
+                    // Dawn: 05:00 (300m) to 07:00 (420m) -> 1.0 down to 0.0
+                    timeMinutes in 300..420 -> (420 - timeMinutes) / 120.0f
+                    // Day: 07:01 to 17:29 -> 0.0
+                    timeMinutes in 421..1049 -> 0.0f
+                    // Dusk / Sunset: 17:30 (1050m) to 19:30 (1170m) -> 0.0 up to 1.0
+                    timeMinutes in 1050..1170 -> (timeMinutes - 1050) / 120.0f
+                    // Deep Night: 19:31 to 04:59 -> 1.0
+                    else -> 1.0f
+                }
+            }
+        }
+    }
+
     fun update(dtSec: Float) {
         animTime += dtSec
+
+        // Butter-smooth transition between Day and Night
+        val targetNight = getTargetNightFactor()
+        val lerpSpeed = if (previewStep != 0) 5.0f else 1.8f
+        currentNightFactor += (targetNight - currentNightFactor) * (dtSec * lerpSpeed).coerceAtMost(1f)
 
         // Clouds horizontal drift
         for (c in clouds) {
@@ -256,13 +340,24 @@ class RY01Renderer(private val context: Context? = null) {
             s.phase = (s.phase + s.speed * dtSec) % 6.283f
         }
 
+        // Nighttime Fireflies drift & bob
+        if (currentNightFactor > 0.1f) {
+            for (f in fireflies) {
+                f.x += f.vx * dtSec
+                f.y += f.vy * dtSec + sin(animTime * 2.0f + f.phase) * 0.15f
+                if (f.x < 5f) f.x = (gridWidth - 10).toFloat()
+                if (f.x > gridWidth - 5) f.x = 10f
+                if (f.y < 160f) f.y = 350f
+                if (f.y > 365f) f.y = 170f
+            }
+        }
+
         // Rain/Snow particles
         if (weatherMode == WeatherMode.RAIN || weatherMode == WeatherMode.THUNDER) {
             for (p in weatherDrops) {
                 p.y += p.speedY * dtSec
                 p.x += p.speedX * dtSec
                 if (p.y > gridHeight - 6) {
-                    // Spawn splash on ground
                     if (rainSplashes.size < 24 && Random.nextFloat() < 0.6f) {
                         rainSplashes.add(RainSplash(
                             x = p.x.coerceIn(2f, (gridWidth - 3).toFloat()),
@@ -278,7 +373,6 @@ class RY01Renderer(private val context: Context? = null) {
                 }
             }
 
-            // Occasional ambient lightning flash during thunderstorm
             if (weatherMode == WeatherMode.THUNDER) {
                 lightningTimer += dtSec
                 if (lightningTimer > 4.5f && Random.nextFloat() < 0.05f) {
@@ -304,7 +398,7 @@ class RY01Renderer(private val context: Context? = null) {
                 val s = it.next()
                 s.x += s.vx * dtSec
                 s.y += s.vy * dtSec
-                s.vy += 80f * dtSec // gravity pull down
+                s.vy += 80f * dtSec
                 s.life -= dtSec
                 if (s.life <= 0f) {
                     it.remove()
@@ -327,25 +421,29 @@ class RY01Renderer(private val context: Context? = null) {
         lastFrameTime = now
         update(dt)
 
-        // 1. Generate Bayer Dithered Pastel Sky
+        // 1. Generate Bayer Dithered Sky Gradient (Seamless Day-Sunset-Night Cross-Fade)
         renderSkyGradient()
 
-        // 2. Stationary Sun & Aura Rings
-        renderSun()
+        // 2. Dynamic 65-Star Starfield (Fades in smoothly at Night)
+        renderStarfield()
 
-        // 3. Clouds
+        // 3. Stationary Celestial Body (0% Drift Sun morphing into 3D Lunar Moon at 124, 86)
+        renderCelestialBody()
+
+        // 4. Adaptable Clouds (Day peach/white transitioning to Moonlit silver/indigo)
         renderClouds()
 
-        // 4. Swallows & Sparkles
+        // 5. Swallows (Day) & Fireflies (Night)
         renderSwallows()
+        renderFireflies()
         renderSparkles()
 
-        // 5. Rain/Snow Particles
+        // 6. Rain/Snow Particles
         if (weatherMode == WeatherMode.RAIN || weatherMode == WeatherMode.THUNDER || weatherMode == WeatherMode.SNOW) {
             renderWeatherParticles()
         }
 
-        // Ambient lightning flash during thunderstorm
+        // Thunder flash
         if (thunderFlashAlpha > 0.01f) {
             val flashR = (255 * thunderFlashAlpha).toInt()
             val flashG = (255 * thunderFlashAlpha).toInt()
@@ -359,7 +457,7 @@ class RY01Renderer(private val context: Context? = null) {
             }
         }
 
-        // 6. Productivity HUD
+        // 7. Auto-Contrast Productivity OLED HUD
         renderHUD()
 
         // Write pixel buffer into virtual bitmap
@@ -372,88 +470,124 @@ class RY01Renderer(private val context: Context? = null) {
 
     private data class ColorStop(val pos: Float, val r: Int, val g: Int, val b: Int)
 
+    private fun lerpColor(c1: Int, c2: Int, t: Float): Int {
+        val a1 = (c1 ushr 24) and 0xFF
+        val r1 = (c1 ushr 16) and 0xFF
+        val g1 = (c1 ushr 8) and 0xFF
+        val b1 = c1 and 0xFF
+
+        val a2 = (c2 ushr 24) and 0xFF
+        val r2 = (c2 ushr 16) and 0xFF
+        val g2 = (c2 ushr 8) and 0xFF
+        val b2 = c2 and 0xFF
+
+        val a = (a1 + (a2 - a1) * t).toInt().coerceIn(0, 255)
+        val r = (r1 + (r2 - r1) * t).toInt().coerceIn(0, 255)
+        val g = (g1 + (g2 - g1) * t).toInt().coerceIn(0, 255)
+        val b = (b1 + (b2 - b1) * t).toInt().coerceIn(0, 255)
+        return (a shl 24) or (r shl 16) or (g shl 8) or b
+    }
+
+    private fun lerpStops(s1: List<ColorStop>, s2: List<ColorStop>, t: Float): List<ColorStop> {
+        val result = mutableListOf<ColorStop>()
+        val count = minOf(s1.size, s2.size)
+        for (i in 0 until count) {
+            val a = s1[i]
+            val b = s2[i]
+            val pos = a.pos + (b.pos - a.pos) * t
+            val r = (a.r + (b.r - a.r) * t).toInt().coerceIn(0, 255)
+            val g = (a.g + (b.g - a.g) * t).toInt().coerceIn(0, 255)
+            val bl = (a.b + (b.b - a.b) * t).toInt().coerceIn(0, 255)
+            result.add(ColorStop(pos, r, g, bl))
+        }
+        return result
+    }
+
     private fun getSkyStops(): List<ColorStop> {
         if (weatherMode == WeatherMode.RAIN) {
             return listOf(
-                ColorStop(0.00f, 108, 120, 150), // Moody slate dusk-blue
-                ColorStop(0.25f, 140, 150, 178), // Overcast lavender grey
-                ColorStop(0.52f, 174, 182, 204), // Soft petrichor mist
-                ColorStop(0.75f, 204, 210, 224), // Foggy morning silver
-                ColorStop(0.90f, 224, 228, 236), // Wet pavement reflection
-                ColorStop(1.00f, 236, 240, 246)  // Bright horizon mist
+                ColorStop(0.00f, 108, 120, 150),
+                ColorStop(0.25f, 140, 150, 178),
+                ColorStop(0.52f, 174, 182, 204),
+                ColorStop(0.75f, 204, 210, 224),
+                ColorStop(0.90f, 224, 228, 236),
+                ColorStop(1.00f, 236, 240, 246)
             )
         } else if (weatherMode == WeatherMode.THUNDER) {
             return listOf(
-                ColorStop(0.00f, 48, 52, 75),    // Deep stormy thunder navy
-                ColorStop(0.30f, 78, 84, 110),   // Dark slate purple
-                ColorStop(0.60f, 118, 124, 150), // Electric storm grey
-                ColorStop(0.85f, 158, 164, 185), // Misty squall
-                ColorStop(1.00f, 188, 194, 210)  // Pale horizon
+                ColorStop(0.00f, 48, 52, 75),
+                ColorStop(0.30f, 78, 84, 110),
+                ColorStop(0.60f, 118, 124, 150),
+                ColorStop(0.85f, 158, 164, 185),
+                ColorStop(1.00f, 188, 194, 210)
             )
         } else if (weatherMode == WeatherMode.SNOW) {
             return listOf(
-                ColorStop(0.00f, 155, 175, 205), // Crisp winter frost
-                ColorStop(0.35f, 185, 200, 222), // Pastel icy blue
-                ColorStop(0.70f, 215, 228, 242), // Frosted snow mist
-                ColorStop(1.00f, 240, 246, 255)  // Pure winter dawn
+                ColorStop(0.00f, 155, 175, 205),
+                ColorStop(0.35f, 185, 200, 222),
+                ColorStop(0.70f, 215, 228, 242),
+                ColorStop(1.00f, 240, 246, 255)
             )
         }
 
-        return when (currentTheme) {
-            RY01Theme.COZY_PEACH -> listOf(
-                ColorStop(0.00f, 162, 172, 222),
-                ColorStop(0.24f, 202, 168, 206),
-                ColorStop(0.48f, 238, 178, 186),
-                ColorStop(0.70f, 254, 202, 168),
-                ColorStop(0.88f, 255, 226, 182),
-                ColorStop(1.00f, 255, 242, 208)
-            )
-            RY01Theme.LAVENDER_HAZE -> listOf(
-                ColorStop(0.00f, 142, 150, 210),
-                ColorStop(0.30f, 175, 160, 215),
-                ColorStop(0.60f, 210, 185, 225),
-                ColorStop(0.85f, 235, 205, 220),
-                ColorStop(1.00f, 250, 225, 215)
-            )
-            RY01Theme.MATCHA_HONEY -> listOf(
-                ColorStop(0.00f, 148, 185, 172),
-                ColorStop(0.35f, 185, 210, 175),
-                ColorStop(0.65f, 220, 225, 180),
-                ColorStop(0.85f, 245, 230, 185),
-                ColorStop(1.00f, 255, 242, 210)
-            )
-            RY01Theme.DYNAMIC_TIME -> {
-                val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-                when (hour) {
-                    in 6..10 -> listOf( // Morning Dawn
-                        ColorStop(0.00f, 162, 172, 222),
-                        ColorStop(0.24f, 202, 168, 206),
-                        ColorStop(0.48f, 238, 178, 186),
-                        ColorStop(0.70f, 254, 202, 168),
-                        ColorStop(0.88f, 255, 226, 182),
-                        ColorStop(1.00f, 255, 242, 208)
-                    )
-                    in 11..16 -> listOf( // Midday Clear Sky
-                        ColorStop(0.00f, 130, 185, 240),
-                        ColorStop(0.40f, 165, 210, 250),
-                        ColorStop(0.75f, 205, 232, 255),
-                        ColorStop(1.00f, 235, 245, 255)
-                    )
-                    in 17..19 -> listOf( // Golden Dusk
-                        ColorStop(0.00f, 85, 80, 145),
-                        ColorStop(0.30f, 155, 95, 135),
-                        ColorStop(0.60f, 230, 120, 110),
-                        ColorStop(0.85f, 250, 180, 115),
-                        ColorStop(1.00f, 255, 220, 150)
-                    )
-                    else -> listOf( // Night
-                        ColorStop(0.00f, 5, 8, 18),
-                        ColorStop(0.35f, 12, 18, 32),
-                        ColorStop(0.70f, 24, 28, 48),
-                        ColorStop(1.00f, 38, 42, 65)
-                    )
-                }
-            }
+        // Defined Palettes
+        val peachStops = listOf(
+            ColorStop(0.00f, 162, 172, 222),
+            ColorStop(0.24f, 202, 168, 206),
+            ColorStop(0.48f, 238, 178, 186),
+            ColorStop(0.70f, 254, 202, 168),
+            ColorStop(0.88f, 255, 226, 182),
+            ColorStop(1.00f, 255, 242, 208)
+        )
+        val lavenderStops = listOf(
+            ColorStop(0.00f, 142, 150, 210),
+            ColorStop(0.30f, 175, 160, 215),
+            ColorStop(0.60f, 210, 185, 225),
+            ColorStop(0.85f, 235, 205, 220),
+            ColorStop(1.00f, 250, 225, 215)
+        )
+        val matchaStops = listOf(
+            ColorStop(0.00f, 148, 185, 172),
+            ColorStop(0.35f, 185, 210, 175),
+            ColorStop(0.65f, 220, 225, 180),
+            ColorStop(0.85f, 245, 230, 185),
+            ColorStop(1.00f, 255, 242, 210)
+        )
+
+        // Sunset / Dusk Palette
+        val sunsetStops = listOf(
+            ColorStop(0.00f, 85, 80, 145),
+            ColorStop(0.24f, 155, 95, 135),
+            ColorStop(0.48f, 230, 120, 110),
+            ColorStop(0.70f, 250, 175, 120),
+            ColorStop(0.88f, 255, 205, 140),
+            ColorStop(1.00f, 255, 225, 165)
+        )
+
+        // Deep Starry Midnight Palette
+        val nightStops = listOf(
+            ColorStop(0.00f, 6, 8, 22),
+            ColorStop(0.24f, 14, 18, 38),
+            ColorStop(0.48f, 25, 28, 54),
+            ColorStop(0.70f, 38, 40, 68),
+            ColorStop(0.88f, 48, 50, 78),
+            ColorStop(1.00f, 62, 60, 88)
+        )
+
+        val baseDayStops = when (currentTheme) {
+            RY01Theme.COZY_PEACH -> peachStops
+            RY01Theme.LAVENDER_HAZE -> lavenderStops
+            RY01Theme.MATCHA_HONEY -> matchaStops
+            RY01Theme.DYNAMIC_TIME -> peachStops
+        }
+
+        // Seamless 3-way interpolation: Day -> Sunset -> Night
+        return if (currentNightFactor <= 0.5f) {
+            val t = currentNightFactor * 2f
+            lerpStops(baseDayStops, sunsetStops, t)
+        } else {
+            val t = (currentNightFactor - 0.5f) * 2f
+            lerpStops(sunsetStops, nightStops, t)
         }
     }
 
@@ -463,7 +597,6 @@ class RY01Renderer(private val context: Context? = null) {
         for (y in 0 until gridHeight) {
             val t = y.toFloat() / (gridHeight - 1)
 
-            // Linear interpolation across stops
             var r = stops.first().r.toFloat()
             var g = stops.first().g.toFloat()
             var b = stops.first().b.toFloat()
@@ -519,13 +652,74 @@ class RY01Renderer(private val context: Context? = null) {
         }
     }
 
-    private fun renderSun() {
-        val sunCore = Color.argb(255, 255, 255, 255)
-        val sunInner = Color.argb(255, 255, 250, 218)
-        val sunMid = Color.argb(255, 255, 228, 162)
-        val sunRim = Color.argb(255, 254, 194, 142)
-        val sunAura = Color.argb(200, 255, 225, 170)
-        val sunRay = Color.argb(220, 255, 245, 210)
+    // -------------------------------------------------------------
+    // Starfield & Fireflies
+    // -------------------------------------------------------------
+
+    private fun renderStarfield() {
+        if (currentNightFactor <= 0.05f) return
+        for (s in stars) {
+            val twinkle = (sin(animTime * s.speed + s.phase) * 0.45f + 0.55f) * currentNightFactor
+            if (twinkle > 0.20f) {
+                val a = (twinkle * 255).toInt().coerceIn(0, 255)
+                val starCol = if (twinkle > 0.85f) Color.argb(a, 255, 255, 255) else Color.argb(a, 205, 222, 255)
+                setPixel(s.x, s.y, starCol)
+                if (s.isCross && twinkle > 0.70f) {
+                    val dimCross = Color.argb((a * 0.60f).toInt(), 190, 215, 255)
+                    setPixel(s.x - 1, s.y, dimCross)
+                    setPixel(s.x + 1, s.y, dimCross)
+                    setPixel(s.x, s.y - 1, dimCross)
+                    setPixel(s.x, s.y + 1, dimCross)
+                }
+            }
+        }
+    }
+
+    private fun renderFireflies() {
+        if (currentNightFactor <= 0.20f) return
+        val ffAlpha = ((currentNightFactor - 0.20f) / 0.80f).coerceIn(0f, 1f)
+        for (f in fireflies) {
+            val pulse = (sin(animTime * f.pulseSpeed + f.phase) * 0.5f + 0.5f) * ffAlpha
+            if (pulse > 0.15f) {
+                val a = (pulse * 255).toInt().coerceIn(0, 255)
+                val ffCol = Color.argb(a, 225, 255, 130)
+                val fx = f.x.toInt()
+                val fy = f.y.toInt()
+                setPixel(fx, fy, ffCol)
+                if (pulse > 0.72f) {
+                    val aura = Color.argb((a * 0.4f).toInt(), 180, 240, 100)
+                    setPixel(fx - 1, fy, aura)
+                    setPixel(fx + 1, fy, aura)
+                    setPixel(fx, fy - 1, aura)
+                    setPixel(fx, fy + 1, aura)
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // Stationary Celestial Morphing (Sun <-> Moon at 124, 86)
+    // -------------------------------------------------------------
+
+    private fun renderCelestialBody() {
+        // Daytime Sun (fades out as currentNightFactor -> 1.0)
+        if (currentNightFactor < 0.98f) {
+            renderSun(1f - currentNightFactor)
+        }
+        // Nighttime 3D Moon with Astronomical Terminator & Craters (fades in as currentNightFactor -> 1.0)
+        if (currentNightFactor > 0.02f) {
+            renderMoon(currentNightFactor)
+        }
+    }
+
+    private fun renderSun(alphaRatio: Float) {
+        val aInt = (alphaRatio * 255).toInt().coerceIn(0, 255)
+        val sunCore = Color.argb(aInt, 255, 255, 255)
+        val sunInner = Color.argb(aInt, 255, 250, 218)
+        val sunMid = Color.argb(aInt, 255, 228, 162)
+        val sunRim = Color.argb(aInt, 254, 194, 142)
+        val sunAura = Color.argb((alphaRatio * 200).toInt(), 255, 225, 170)
+        val sunRay = Color.argb((alphaRatio * 220).toInt(), 255, 245, 210)
 
         // Radial ray spikes
         val rayAngles = intArrayOf(0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330)
@@ -578,24 +772,125 @@ class RY01Renderer(private val context: Context? = null) {
         }
     }
 
+    private fun renderMoon(alphaRatio: Float) {
+        val aInt = (alphaRatio * 255).toInt().coerceIn(0, 255)
+        val r = sunRadius
+        val s = 1.0f
+
+        val phaseAngle = (lunarPhase % 1.0f) * 6.28318530718f
+        val isWaxing = (lunarPhase % 1.0f) < 0.5f
+
+        val highlightColor = Color.argb(aInt, 255, 255, 255)
+        val lightColor = Color.argb(aInt, 230, 238, 252)
+        val shadeColor = Color.argb(aInt, 170, 180, 204)
+        val deepCraterColor = Color.argb(aInt, 115, 125, 150)
+        val moonAura = Color.argb((alphaRatio * 85).toInt(), 170, 205, 250)
+        val moonGlow = Color.argb((alphaRatio * 45).toInt(), 140, 180, 240)
+
+        // Concentric Moonlit Starlight Halo Rings
+        for (haloR in intArrayOf(r + 5, r + 13, r + 22)) {
+            val minD = (haloR - 1) * (haloR - 1)
+            val maxD = haloR * haloR
+            val auraColor = if (haloR == r + 5) moonAura else moonGlow
+            for (dy in -haloR..haloR) {
+                for (dx in -haloR..haloR) {
+                    val dSq = dx * dx + dy * dy
+                    if (dSq in minD..maxD && (dx + dy) % 3 == 0) {
+                        setPixel(sunCenterX + dx, sunCenterY + dy, auraColor)
+                    }
+                }
+            }
+        }
+
+        // Procedural 3D Spherical Moon Disk with Authentic Lunar Terminator & 4 Craters
+        for (dy in -r..r) {
+            val dySq = dy * dy
+            if (dySq > r * r) continue
+
+            val halfWidth = sqrt((r * r - dySq).toDouble()).toFloat()
+            if (halfWidth <= 0.01f) continue
+
+            for (dx in -r..r) {
+                val distSq = dx * dx + dySq
+                if (distSq <= r * r) {
+                    val u = (dx / halfWidth).coerceIn(-1.0f, 1.0f)
+
+                    val isIlluminated = if (isWaxing) {
+                        u >= cos(phaseAngle)
+                    } else {
+                        u <= -cos(phaseAngle)
+                    }
+
+                    if (isIlluminated) {
+                        val isRimHighlight = (isWaxing && dx > r * 0.7f && dy < 0) || (!isWaxing && dx < -r * 0.7f && dy < 0)
+                        val isBottomShade = dy > r * 0.55f || (isWaxing && dx < 0 && dy > 0) || (!isWaxing && dx > 0 && dy > 0)
+
+                        // 4 Procedural Lunar Craters
+                        val c1x = (dx + 8 * s)
+                        val c1y = (dy + 5 * s)
+                        val isCrater1 = (c1x * c1x + c1y * c1y) <= (5 * s) * (5 * s)
+
+                        val c2x = (dx - 7 * s)
+                        val c2y = (dy + 12 * s)
+                        val isCrater2 = (c2x * c2x + c2y * c2y) <= (4 * s) * (4 * s)
+
+                        val c3x = (dx + 11 * s)
+                        val c3y = (dy - 9 * s)
+                        val isCrater3 = (c3x * c3x + c3y * c3y) <= (3.5 * s) * (3.5 * s)
+
+                        val c4x = (dx - 12 * s)
+                        val c4y = (dy - 6 * s)
+                        val isCrater4 = (c4x * c4x + c4y * c4y) <= (3 * s) * (3 * s)
+
+                        val col = when {
+                            isRimHighlight -> highlightColor
+                            isCrater1 || isCrater2 || isCrater3 || isCrater4 -> deepCraterColor
+                            isBottomShade -> shadeColor
+                            else -> lightColor
+                        }
+                        setPixel(sunCenterX + dx, sunCenterY + dy, col)
+                    } else {
+                        // Soft 8-bit unlit lunar rim for true spherical volume
+                        if (distSq == r * r || distSq == (r - 1) * (r - 1)) {
+                            setPixel(sunCenterX + dx, sunCenterY + dy, Color.argb((alphaRatio * 35).toInt(), 180, 200, 240))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // Clouds
+    // -------------------------------------------------------------
+
     private fun renderClouds() {
         val isRainy = weatherMode == WeatherMode.RAIN || weatherMode == WeatherMode.THUNDER
         val isSnow = weatherMode == WeatherMode.SNOW
-        val cloudHi = when {
+
+        val cloudHiDay = when {
             isRainy -> Color.argb(255, 224, 232, 244)
             isSnow -> Color.argb(255, 248, 252, 255)
             else -> Color.argb(255, 255, 255, 255)
         }
-        val cloudBody = when {
+        val cloudBodyDay = when {
             isRainy -> Color.argb(248, 178, 190, 210)
             isSnow -> Color.argb(248, 220, 230, 245)
             else -> Color.argb(248, 254, 238, 236)
         }
-        val cloudShdw = when {
+        val cloudShdwDay = when {
             isRainy -> Color.argb(235, 134, 146, 172)
             isSnow -> Color.argb(235, 185, 200, 222)
             else -> Color.argb(235, 215, 192, 218)
         }
+
+        val cloudHiNight = Color.argb(255, 215, 230, 255)
+        val cloudBodyNight = Color.argb(240, 48, 56, 82)
+        val cloudShdwNight = Color.argb(235, 30, 35, 54)
+
+        val cloudHi = lerpColor(cloudHiDay, cloudHiNight, currentNightFactor)
+        val cloudBody = lerpColor(cloudBodyDay, cloudBodyNight, currentNightFactor)
+        val cloudShdw = lerpColor(cloudShdwDay, cloudShdwNight, currentNightFactor)
 
         for (cloud in clouds) {
             val template = cloudTemplates[cloud.templateIdx]
@@ -638,7 +933,9 @@ class RY01Renderer(private val context: Context? = null) {
     }
 
     private fun renderSwallows() {
-        val birdCol = Color.argb(240, 118, 98, 138)
+        val swallowAlpha = ((0.65f - currentNightFactor) / 0.65f).coerceIn(0f, 1f)
+        if (swallowAlpha <= 0.02f) return
+        val birdCol = Color.argb((swallowAlpha * 240).toInt(), 118, 98, 138)
         for (b in birds) {
             val bx = b.startX.toInt()
             val by = (b.startY + sin(animTime * 2.5f + b.flapPhase) * 1.5f).toInt()
@@ -656,10 +953,14 @@ class RY01Renderer(private val context: Context? = null) {
     }
 
     private fun renderSparkles() {
+        val sparkleAlpha = ((0.70f - currentNightFactor) / 0.70f).coerceIn(0f, 1f)
+        if (sparkleAlpha <= 0.02f) return
+
         for (s in sparkles) {
-            val twinkle = sin(s.phase) * 0.5f + 0.5f
+            val twinkle = (sin(s.phase) * 0.5f + 0.5f) * sparkleAlpha
             if (twinkle > 0.4f) {
-                val col = if (twinkle > 0.8f) Color.WHITE else Color.argb(220, 255, 235, 175)
+                val a = (twinkle * 255).toInt().coerceIn(0, 255)
+                val col = if (twinkle > 0.8f) Color.argb(a, 255, 255, 255) else Color.argb((a * 0.86f).toInt(), 255, 235, 175)
                 setPixel(s.x, s.y, col)
                 if (twinkle > 0.7f) {
                     setPixel(s.x - 1, s.y, col)
@@ -710,15 +1011,37 @@ class RY01Renderer(private val context: Context? = null) {
         val hudX = 14
         val hudY = 142
 
-        val hudMain = Color.argb(255, 60, 48, 80)
-        val hudSub = Color.argb(240, 95, 78, 115)
-        val hudAccent = Color.argb(255, 205, 95, 112)
-        val hudWater = Color.argb(255, 79, 175, 219)
-        val hudShadow = Color.argb(180, 255, 242, 235)
+        // Seamless Auto-Contrast Color Morphing from Day Plum to Night Luminous Starlight
+        val hudMainDay = Color.argb(255, 60, 48, 80)
+        val hudSubDay = Color.argb(240, 95, 78, 115)
+        val hudAccentDay = Color.argb(255, 205, 95, 112)
+        val hudWaterDay = Color.argb(255, 79, 175, 219)
+        val hudShadowDay = Color.argb(180, 255, 242, 235)
+
+        val hudMainNight = Color.argb(255, 248, 250, 255)
+        val hudSubNight = Color.argb(240, 175, 192, 225)
+        val hudAccentNight = Color.argb(255, 255, 135, 150)
+        val hudWaterNight = Color.argb(255, 105, 205, 255)
+        val hudShadowNight = Color.argb(220, 6, 8, 16)
+
+        // S-curve contrast transition so text never loses contrast in twilight
+        val textT = if (currentNightFactor < 0.35f) {
+            0.0f
+        } else if (currentNightFactor > 0.65f) {
+            1.0f
+        } else {
+            (currentNightFactor - 0.35f) / 0.30f
+        }
+
+        val hudMain = lerpColor(hudMainDay, hudMainNight, textT)
+        val hudSub = lerpColor(hudSubDay, hudSubNight, textT)
+        val hudAccent = lerpColor(hudAccentDay, hudAccentNight, textT)
+        val hudWater = lerpColor(hudWaterDay, hudWaterNight, textT)
+        val hudShadow = lerpColor(hudShadowDay, hudShadowNight, textT)
 
         // Line 1: Weather & Telemetry (Single Tap to cycle)
         val teleText = when (telemetryMode) {
-            0 -> if (weatherMode == WeatherMode.RAIN || weatherMode == WeatherMode.THUNDER) "UV 1 LOW" else "UV 3 MOD"
+            0 -> if (weatherMode == WeatherMode.RAIN || weatherMode == WeatherMode.THUNDER) "UV 1 LOW" else if (currentNightFactor > 0.5f) "UV 0 NIGHT" else "UV 3 MOD"
             1 -> if (weatherMode == WeatherMode.RAIN || weatherMode == WeatherMode.THUNDER) "AQI 22 FRESH" else "AQI 42 GOOD"
             else -> if (weatherMode == WeatherMode.RAIN) "RAIN 85%" else if (weatherMode == WeatherMode.THUNDER) "STORM 95%" else if (weatherMode == WeatherMode.SNOW) "SNOW 80%" else "RAIN 10%"
         }
@@ -727,13 +1050,20 @@ class RY01Renderer(private val context: Context? = null) {
             WeatherMode.THUNDER -> "STORM"
             WeatherMode.SNOW -> "SNOW"
             WeatherMode.CLOUDY -> "CLOUDY"
-            WeatherMode.CLEAR_NIGHT -> "CLEAR"
+            WeatherMode.CLEAR_NIGHT -> if (currentNightFactor > 0.5f) "MOON" else "CLEAR"
         }
-        val line1 = "${cityName.take(3).uppercase()} $currentTemp $weatherTag • $teleText"
+        val previewTag = when (previewStep) {
+            1 -> " [DAY]"
+            2 -> " [DUSK]"
+            3 -> " [NIGHT]"
+            else -> ""
+        }
+        val line1 = "${cityName.take(3).uppercase()} $currentTemp $weatherTag$previewTag • $teleText"
         drawText(line1, hudX, hudY, hudSub, 1, hudShadow)
 
         // Line 2: Custom Countdown (Single Tap to toggle days vs hours)
-        drawCakeIcon(hudX, hudY + 9, hudAccent, Color.argb(255, 255, 215, 100))
+        val candleCol = lerpColor(Color.argb(255, 255, 215, 100), Color.argb(255, 255, 235, 140), currentNightFactor)
+        drawCakeIcon(hudX, hudY + 9, hudAccent, candleCol)
         val countText = if (showHoursCountdown) {
             "${countdownLabel.uppercase()} IN ${countdownDays * 24}H"
         } else {
@@ -741,13 +1071,19 @@ class RY01Renderer(private val context: Context? = null) {
         }
         drawText(countText, hudX + 8, hudY + 10, hudAccent, 1, hudShadow)
 
-        // Line 3: Big Monospace Clock (HH:mm)
+        // Line 3: Big Monospace Clock (HH:mm) - Tap to cycle themes!
         val currentTimeStr = timeFormat.format(Date())
         drawText(currentTimeStr, hudX, hudY + 22, hudMain, 3, hudShadow)
 
-        // Line 4: Date
+        // Line 4: Date & Moon Phase label at night
         val currentDateStr = dateFormat.format(Date()).uppercase()
-        drawText(currentDateStr, hudX, hudY + 42, hudSub, 1, hudShadow)
+        val line4 = if (currentNightFactor > 0.6f) {
+            val phaseLabel = LunarPhaseHelper.getPhaseType(lunarPhase).label.uppercase()
+            "$currentDateStr • $phaseLabel"
+        } else {
+            currentDateStr
+        }
+        drawText(line4, hudX, hudY + 42, hudSub, 1, hudShadow)
 
         // Line 5: Battery & Unlocks
         val batBar = when {
@@ -790,7 +1126,6 @@ class RY01Renderer(private val context: Context? = null) {
         for ((px, py) in pixels) {
             setPixel(px, py, waterCol)
         }
-        // Specular glint
         setPixel(gx + 2, gy + 3, Color.WHITE)
     }
 
@@ -806,7 +1141,6 @@ class RY01Renderer(private val context: Context? = null) {
                     if (isFilled) {
                         setPixel(x0 + dx, gy + dy, filledCol)
                     } else {
-                        // Outline pip
                         if (dy == 0 || dy == pipH - 1 || dx == 0 || dx == pipW - 1) {
                             setPixel(x0 + dx, gy + dy, emptyCol)
                         }
@@ -878,7 +1212,6 @@ class RY01Renderer(private val context: Context? = null) {
             val charW = glyph[0].size
             val charH = glyph.size
 
-            // Draw shadow first if requested
             if (shadowColor != null) {
                 for (r in 0 until charH) {
                     for (c in 0 until charW) {
@@ -893,7 +1226,6 @@ class RY01Renderer(private val context: Context? = null) {
                 }
             }
 
-            // Draw character
             for (r in 0 until charH) {
                 for (c in 0 until charW) {
                     if (glyph[r][c] == 1) {
